@@ -71,13 +71,13 @@ class LLMService:
                     quantization_config=quantization_config,
                     device_map="auto",
                     trust_remote_code=True,
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+                    dtype=torch.float16 if self.device == "cuda" else torch.float32
                 )
             else:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     trust_remote_code=True,
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+                    dtype=torch.float16 if self.device == "cuda" else torch.float32
                 )
                 if self.device == "cpu":
                     self.model = self.model.to(self.device)
