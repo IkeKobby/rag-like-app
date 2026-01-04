@@ -1,0 +1,15 @@
+Main goal:  Build and Run MCP Servers Easily and Securely with Docker 
+- can we build together an app that uses call ai agent to do something through mcp? 
+- i do not have any idea right now what kind of project would be nice but i am thinking 
+- of something RAG-like where i have an app, a document-base bank where i can put in some pdfs 
+- and a query to the agent will first retrieve info from the document bank before responding 
+- with appropriate info. also something that i can demonstrate to emplpoyers that might be interested 
+- with individuals witk agentic ai skills. 
+- as you know y research, "SLM-first agentic ai systems" is my phd dissertation where I am working agentic ai 
+- systems for data science--like automatic feature engineering like CAAFE(context aware automatic feature 
+- engineering) but purely basing on slms. 
+- so i would want that to kinda increase my portfolio; if you want, checking https://isaackobby.com you 
+- could have fair idea of my research projects. 
+- also, my laptop cannot run heavy softwares like docker, or agent inference gpu but i have google colab pro 
+- with high ram a100 where i could leverage if it becomes critical. i could connect to github and access codes etc 
+- from there.
