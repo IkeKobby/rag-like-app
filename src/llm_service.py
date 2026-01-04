@@ -53,6 +53,7 @@ class LLMService:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
             # Configure quantization for memory efficiency (useful for Colab)
+            uses_device_map = False
             if self.use_quantization and self.device == "cuda":
                 print("Using 4-bit quantization to save memory...")
                 quantization_config = BitsAndBytesConfig(
@@ -61,6 +62,7 @@ class LLMService:
                     bnb_4bit_use_double_quant=True,
                     bnb_4bit_quant_type="nf4"
                 )
+                uses_device_map = True
             else:
                 quantization_config = None
             
@@ -71,24 +73,39 @@ class LLMService:
                     quantization_config=quantization_config,
                     device_map="auto",
                     trust_remote_code=True,
-                    dtype=torch.float16 if self.device == "cuda" else torch.float32
+                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
                 )
+                uses_device_map = True
             else:
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     trust_remote_code=True,
-                    dtype=torch.float16 if self.device == "cuda" else torch.float32
+                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
                 )
                 if self.device == "cpu":
                     self.model = self.model.to(self.device)
+                uses_device_map = False
+            
+            # Store flag for pipeline creation
+            self.uses_device_map = uses_device_map
             
             # Create pipeline for text generation
-            self.generator = pipeline(
-                "text-generation",
-                model=self.model,
-                tokenizer=self.tokenizer,
-                device=0 if self.device == "cuda" else -1
-            )
+            # When using device_map="auto", don't specify device in pipeline
+            if self.uses_device_map:
+                # Model is already distributed across devices via device_map
+                self.generator = pipeline(
+                    "text-generation",
+                    model=self.model,
+                    tokenizer=self.tokenizer
+                )
+            else:
+                # Traditional device placement
+                self.generator = pipeline(
+                    "text-generation",
+                    model=self.model,
+                    tokenizer=self.tokenizer,
+                    device=0 if self.device == "cuda" else -1
+                )
             
             print("✓ LLM model loaded successfully")
         

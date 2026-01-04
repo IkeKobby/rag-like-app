@@ -36,18 +36,26 @@ class DocumentProcessor:
         # Try pdfplumber first (better for complex layouts)
         try:
             with pdfplumber.open(pdf_path) as pdf:
-                for page in pdf.pages:
+                print(f"Processing PDF with pdfplumber ({len(pdf.pages)} pages)...")
+                for i, page in enumerate(pdf.pages):
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
+                    # Progress indicator for large PDFs
+                    if (i + 1) % 10 == 0:
+                        print(f"  Processed {i + 1}/{len(pdf.pages)} pages...")
         except Exception as e:
             print(f"pdfplumber failed, trying pypdf: {e}")
             # Fallback to pypdf
             try:
                 with open(pdf_path, 'rb') as file:
                     pdf_reader = pypdf.PdfReader(file)
-                    for page in pdf_reader.pages:
+                    print(f"Processing PDF with pypdf ({len(pdf_reader.pages)} pages)...")
+                    for i, page in enumerate(pdf_reader.pages):
                         text += page.extract_text() + "\n"
+                        # Progress indicator for large PDFs
+                        if (i + 1) % 10 == 0:
+                            print(f"  Processed {i + 1}/{len(pdf_reader.pages)} pages...")
             except Exception as e:
                 raise ValueError(f"Failed to extract text from PDF: {e}")
         
@@ -120,8 +128,12 @@ class DocumentProcessor:
         
         document_id = document_id or Path(pdf_path).stem
         
+        print(f"Extracting text from PDF: {Path(pdf_path).name}")
         # Extract text
         text = self.extract_text_from_pdf(pdf_path)
+        
+        print(f"Text extracted: {len(text)} characters")
+        print(f"Chunking text...")
         
         # Create metadata
         metadata = {
@@ -133,5 +145,6 @@ class DocumentProcessor:
         
         # Chunk text
         chunks = self.chunk_text(text, metadata)
+        print(f"Created {len(chunks)} chunks")
         
         return chunks
