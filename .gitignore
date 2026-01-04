@@ -17,6 +17,7 @@ build/
 
 # Data and storage
 data/
+documents/
 *.db
 *.sqlite
 *.faiss
