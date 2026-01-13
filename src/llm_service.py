@@ -40,77 +40,74 @@ class LLMService:
         """Load the LLM model and tokenizer"""
         print(f"Loading LLM model: {self.model_name}")
         print(f"Device: {self.device}")
-        
+
         try:
-            # Load tokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_name,
-                trust_remote_code=True
+            self._extracted_from__load_model_8()
+        except Exception as e:
+            raise RuntimeError(f"Failed to load LLM model {self.model_name}: {e}") from e
+
+    # TODO Rename this here and in `_load_model`
+    def _extracted_from__load_model_8(self):
+        # Load tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name,
+            trust_remote_code=True
+        )
+
+        # Set pad token if not present
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        # Configure quantization for memory efficiency (useful for Colab)
+        uses_device_map = False
+        if self.use_quantization and self.device == "cuda":
+            print("Using 4-bit quantization to save memory...")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4"
             )
-            
-            # Set pad token if not present
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-            # Configure quantization for memory efficiency (useful for Colab)
+            uses_device_map = True
+        else:
+            quantization_config = None
+
+        # Load model
+        if quantization_config:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                quantization_config=quantization_config,
+                device_map="auto",
+                trust_remote_code=True,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+            )
+            uses_device_map = True
+        else:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                trust_remote_code=True,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+            )
+            if self.device == "cpu":
+                self.model = self.model.to(self.device)
             uses_device_map = False
-            if self.use_quantization and self.device == "cuda":
-                print("Using 4-bit quantization to save memory...")
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4"
-                )
-                uses_device_map = True
-            else:
-                quantization_config = None
-            
-            # Load model
-            if quantization_config:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
-                    quantization_config=quantization_config,
-                    device_map="auto",
-                    trust_remote_code=True,
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
-                )
-                uses_device_map = True
-            else:
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
-                    trust_remote_code=True,
-                    torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
-                )
-                if self.device == "cpu":
-                    self.model = self.model.to(self.device)
-                uses_device_map = False
-            
-            # Store flag for pipeline creation
-            self.uses_device_map = uses_device_map
-            
+
+        # Store flag for pipeline creation
+        self.uses_device_map = uses_device_map
+
             # Create pipeline for text generation
             # When using device_map="auto", don't specify device in pipeline
-            if self.uses_device_map:
-                # Model is already distributed across devices via device_map
-                self.generator = pipeline(
-                    "text-generation",
-                    model=self.model,
-                    tokenizer=self.tokenizer
-                )
-            else:
-                # Traditional device placement
-                self.generator = pipeline(
-                    "text-generation",
-                    model=self.model,
-                    tokenizer=self.tokenizer,
-                    device=0 if self.device == "cuda" else -1
-                )
-            
-            print("✓ LLM model loaded successfully")
-        
-        except Exception as e:
-            raise RuntimeError(f"Failed to load LLM model {self.model_name}: {e}")
+        self.generator = (
+            pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
+            if self.uses_device_map
+            else pipeline(
+                "text-generation",
+                model=self.model,
+                tokenizer=self.tokenizer,
+                device=0 if self.device == "cuda" else -1,
+            )
+        )
+        print("LLM model loaded successfully")
     
     def generate_answer(
         self,
