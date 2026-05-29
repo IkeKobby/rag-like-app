@@ -31,8 +31,16 @@ async def interactive_client():
     embedding_model = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     vector_store_type = os.getenv("VECTOR_STORE_TYPE", "chromadb")
     storage_path = os.getenv("CHROMA_DB_PATH", "./data/chroma_db")
-    llm_model_name = os.getenv("LLM_MODEL_NAME", None)
+    llm_model_name = os.getenv("LLM_MODEL_NAME", "Qwen/Qwen2.5-0.5B-Instruct")
     use_llm = os.getenv("USE_LLM", "false").lower() == "true"
+    use_simple_llm = os.getenv("USE_SIMPLE_LLM", "false").lower() == "true"
+    chunk_size = int(os.getenv("CHUNK_SIZE", "1000"))
+    chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "200"))
+    default_top_k = int(os.getenv("TOP_K", "5"))
+    llm_device = os.getenv("LLM_DEVICE") or None
+    llm_max_new_tokens = int(os.getenv("LLM_MAX_NEW_TOKENS", "256"))
+    llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+    llm_top_p = float(os.getenv("LLM_TOP_P", "0.9"))
     
     print(f"Embedding Model: {embedding_model}")
     print(f"Vector Store: {vector_store_type}")
@@ -46,9 +54,15 @@ async def interactive_client():
         embedding_model=embedding_model,
         vector_store_type=vector_store_type,
         storage_path=storage_path,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         llm_model_name=llm_model_name,
         use_llm=use_llm,
-        use_simple_llm=False
+        use_simple_llm=use_simple_llm,
+        llm_device=llm_device,
+        llm_max_new_tokens=llm_max_new_tokens,
+        llm_temperature=llm_temperature,
+        llm_top_p=llm_top_p
     )
     
     print("✓ RAG Engine initialized successfully!")
@@ -58,7 +72,7 @@ async def interactive_client():
         print_separator()
         print("RAG Document Q&A System")
         print("\nOptions:")
-        print("  1. Add a PDF document")
+        print("  1. Add a document (.pdf, .txt, .md)")
         print("  2. Query documents")
         print("  3. Exit")
         
@@ -66,10 +80,10 @@ async def interactive_client():
         
         if choice == "1":
             print_section("Add Document")
-            pdf_path = input("Enter path to PDF file: ").strip()
+            document_path = input("Enter path to document file: ").strip()
             
-            if not os.path.exists(pdf_path):
-                print(f"❌ Error: File not found: {pdf_path}")
+            if not os.path.exists(document_path):
+                print(f"❌ Error: File not found: {document_path}")
                 continue
             
             document_id = input("Enter document ID (optional, press Enter to use filename): ").strip()
@@ -77,7 +91,7 @@ async def interactive_client():
                 document_id = None
             
             print("\nProcessing document...")
-            result = rag_engine.add_document(pdf_path, document_id)
+            result = rag_engine.add_document(document_path, document_id)
             
             if result['success']:
                 print(f"✓ Successfully added document: {result['file_name']}")
@@ -94,8 +108,8 @@ async def interactive_client():
                 print("❌ Error: Question cannot be empty")
                 continue
             
-            top_k = input("Number of chunks to retrieve (default: 5): ").strip()
-            top_k = int(top_k) if top_k.isdigit() else 5
+            top_k = input(f"Number of chunks to retrieve (default: {default_top_k}): ").strip()
+            top_k = int(top_k) if top_k.isdigit() else default_top_k
             
             print("\nSearching documents...")
             result = rag_engine.query(question, top_k=top_k, generate_answer=rag_engine.use_llm)
@@ -134,5 +148,10 @@ async def interactive_client():
             print("❌ Invalid choice. Please enter 1, 2, or 3.")
 
 
-if __name__ == "__main__":
+def main():
+    """Console-script entry point."""
     asyncio.run(interactive_client())
+
+
+if __name__ == "__main__":
+    main()

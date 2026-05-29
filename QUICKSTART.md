@@ -10,10 +10,10 @@
 2. **Set up environment** (optional):
    ```bash
    cp .env.example .env
-   # Edit .env if you want to use cloud embeddings or change settings
+   # Edit .env to change model, chunking, retrieval, or generation settings
    ```
 
-3. **Create data directories**:
+3. **Optional: create data directories**:
    ```bash
    mkdir -p data/documents data/chroma_db
    ```
@@ -27,11 +27,26 @@ python client.py
 ```
 
 This will:
-1. Initialize the RAG engine (downloads the embedding model on first run)
+1. Initialize the RAG engine (downloads models on first run)
 2. Show a menu where you can:
-   - Add PDF documents to the knowledge base
+   - Add `.pdf`, `.txt`, or `.md` documents to the knowledge base
    - Query documents with questions
+   - Generate answers when `USE_LLM=true`
    - Exit
+
+## Smoke Demo
+
+Test ingestion and retrieval without loading an LLM:
+
+```bash
+python demo_rag.py --skip-llm
+```
+
+Test the full RAG flow with Hugging Face answer generation:
+
+```bash
+python demo_rag.py
+```
 
 ## Example Workflow
 
@@ -42,13 +57,13 @@ This will:
 
 2. **Add a document**:
    - Choose option `1`
-   - Enter the path to your PDF file
+   - Enter the path to your `.pdf`, `.txt`, or `.md` file
    - Optionally provide a document ID
 
 3. **Query documents**:
    - Choose option `2`
    - Enter your question
-   - Review the retrieved context
+   - Review the generated answer and retrieved context
 
 ## Programmatic Usage
 
@@ -59,12 +74,12 @@ from src.rag_engine import RAGEngine
 rag = RAGEngine()
 
 # Add a document
-result = rag.add_document("path/to/document.pdf")
+result = rag.add_document("path/to/document.md")
 print(result)
 
 # Query
 result = rag.query("What is this document about?")
-print(result['context'])
+print(result["answer"] or result["context"])
 ```
 
 ## Running as MCP Server
@@ -79,13 +94,14 @@ python -m src.mcp_server
 
 ### First Run
 
-On first run, the embedding model will be downloaded (about 90MB). This only happens once.
+On first run, the embedding model will be downloaded (about 90MB). If `USE_LLM=true`, the configured Hugging Face language model is also downloaded.
 
 ### Memory Issues
 
 If you encounter memory issues:
 - Use a smaller embedding model (e.g., `all-MiniLM-L6-v2` - already the default)
 - Reduce `chunk_size` in RAGEngine initialization
+- Use `USE_LLM=false` or run `python demo_rag.py --skip-llm`
 - Use FAISS instead of ChromaDB (set `VECTOR_STORE_TYPE=faiss` in `.env`)
 
 ### PDF Processing Issues

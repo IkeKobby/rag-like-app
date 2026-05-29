@@ -1,269 +1,147 @@
-# RAG-based MCP Server for Document Question Answering
+# RAG-like Document Q&A App
 
-A Retrieval-Augmented Generation (RAG) system built as an MCP (Model Context Protocol) server that enables document-based question answering. This application allows you to add PDF documents to a knowledge base and query them using semantic search.
+A small Retrieval-Augmented Generation demo for asking questions about local
+documents. It can ingest PDF, text, and Markdown files, chunk their text, embed
+the chunks, store them in ChromaDB or FAISS, retrieve relevant context, and
+optionally generate an answer with a public Hugging Face language model.
 
-## Features
+The default generation model is `Qwen/Qwen2.5-0.5B-Instruct`. It is small,
+public, instruction-tuned, and realistic for a local demo. Larger models such
+as `microsoft/Phi-3-mini-4k-instruct` usually produce better answers, but need
+more RAM/VRAM and more patience on CPU.
 
-- 📄 **PDF Document Processing**: Extract and chunk text from PDF files
-- 🔍 **Semantic Search**: Find relevant document chunks using embeddings
-- 💾 **Vector Storage**: Store and retrieve document embeddings (ChromaDB or FAISS)
-- 🤖 **LLM Integration**: Generate answers using HuggingFace models (Mistral, Llama, etc.)
-- 🔗 **Full RAG Pipeline**: Retrieval + Answer Generation
-- 🌐 **MCP Server**: Expose functionality through Model Context Protocol
-- 🚀 **Flexible**: Works on CPU (lightweight) or GPU (Colab Pro/A100)
-- ☁️ **Colab Compatible**: Optimized for Google Colab with GPU support
+## What It Includes
 
-## Architecture
+- Document ingestion for `.pdf`, `.txt`, `.md`, and `.markdown`
+- PDF text extraction with `pdfplumber` and `pypdf` fallback
+- Overlapping text chunking
+- Local sentence-transformer embeddings
+- ChromaDB persistent vector storage or in-memory FAISS search
+- Question retrieval with configurable `top_k`
+- Prompt construction from retrieved chunks
+- Hugging Face answer generation
+- Interactive CLI and MCP server entry points
+- A non-interactive smoke demo in `demo_rag.py`
 
-### Full RAG Pipeline
+## Install
 
-```
-┌─────────────────┐
-│   PDF Files     │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐      ┌──────────────────┐
-│ Document        │      │ Embedding Model  │
-│ Processor       │─────▶│ (e.g., MiniLM)   │
-│ (Chunking)      │      │ Creates Vectors  │
-└────────┬────────┘      └────────┬─────────┘
-         │                        │
-         │                        ▼
-         │              ┌──────────────────┐
-         │              │ Vector Store     │
-         │              │ (ChromaDB/FAISS) │
-         │              │ Stores Embeddings│
-         │              └────────┬─────────┘
-         │                       │
-         │              User Question
-         │                       │
-         │                       ▼
-         │              ┌──────────────────┐
-         │              │ Embedding Model  │
-         │              │ (Vectorize Query)│
-         │              └────────┬─────────┘
-         │                       │
-         │                       ▼
-         │              ┌──────────────────┐
-         │              │ Similarity Search│
-         │              │ Retrieve Chunks  │
-         │              └────────┬─────────┘
-         │                       │
-         │                       ▼
-         │              ┌──────────────────┐
-         │              │ LLM (HuggingFace)│
-         │              │ Generate Answer  │
-         │              └──────────────────┘
-         │
-         └─────────────── Final Answer
+Use Python 3.8 or newer. Python 3.11 is known to compile this project locally.
+
+```bash
+cd /Users/ika/Documents/Codex/rag-like-app
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+cp .env.example .env
 ```
 
-### Components Explained
+The first run downloads the embedding model. If `USE_LLM=true`, it also
+downloads the configured Hugging Face generation model.
 
-1. **Embedding Model**: Converts text to vectors (semantic representations)
-2. **Vector Store**: Database for fast similarity search of embeddings
-3. **LLM**: Large Language Model that generates answers from context
+## Configure
 
-## Installation
+Edit `.env` as needed:
 
-### Prerequisites
+```bash
+VECTOR_STORE_TYPE=chromadb
+CHROMA_DB_PATH=./data/chroma_db
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+TOP_K=5
 
-- Python 3.8 or higher
-- pip package manager
+USE_LLM=true
+LLM_MODEL_NAME=Qwen/Qwen2.5-0.5B-Instruct
+LLM_DEVICE=
+LLM_MAX_NEW_TOKENS=256
+LLM_TEMPERATURE=0.0
+LLM_TOP_P=0.9
+HUGGINGFACE_HUB_TOKEN=
+```
 
-### Setup
+`LLM_DEVICE` can be left blank for auto-detection. Supported values are usually
+`cuda`, `mps`, or `cpu`, depending on your machine and PyTorch install.
 
-1. **Clone or navigate to the project directory**
+Set `HUGGINGFACE_HUB_TOKEN` or `HF_TOKEN` only if you choose a gated/private
+model. Do not commit real tokens.
 
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Quick Smoke Demo
 
-3. **Set up environment variables**:
-   ```bash
-   cp .env.example .env
-   # Edit .env and configure your settings
-   ```
+Run retrieval only:
 
-4. **Create data directories**:
-   ```bash
-   mkdir -p data/documents
-   mkdir -p data/chroma_db
-   ```
+```bash
+python demo_rag.py --skip-llm
+```
 
-## Configuration
+Run retrieval plus answer generation:
 
-Edit `.env` file to configure:
+```bash
+python demo_rag.py
+```
 
-- **Embedding Model**: Choose between local models (e.g., `all-MiniLM-L6-v2`) or cloud models (requires API key)
-- **Vector Store**: Select `chromadb` or `faiss`
-- **Storage Paths**: Configure where to store documents and vector database
-- **API Keys**: Optional - for cloud-based embeddings or LLM integration
+The demo creates `data/sample_docs/acme_robotics.txt`, ingests it, asks a sample
+question, and prints the retrieved chunks. With LLM enabled, it also prints a
+generated answer.
 
-## Usage
-
-### Interactive Client
-
-Run the interactive client to add documents and query them:
+## Interactive CLI
 
 ```bash
 python client.py
 ```
 
-The client provides a menu-driven interface:
-1. Add PDF documents to the knowledge base
-2. Query documents with questions
+Menu options:
+
+1. Add a document (`.pdf`, `.txt`, `.md`)
+2. Ask a question
 3. Exit
 
-### MCP Server Mode
+When answer generation is enabled with `USE_LLM=true`, the CLI prints both the
+generated answer and the retrieved source chunks.
 
-To run as an MCP server (for integration with MCP clients):
+## MCP Server
 
 ```bash
 python -m src.mcp_server
 ```
 
-### Programmatic Usage
+Exposed tools:
+
+- `add_document`: ingest a supported document path
+- `query_documents`: retrieve context and optionally generate an answer
+- `delete_document`: delete ChromaDB chunks for a document ID
+
+## Programmatic Usage
 
 ```python
 from src.rag_engine import RAGEngine
 
-# Initialize RAG engine
 rag = RAGEngine(
     embedding_model="all-MiniLM-L6-v2",
     vector_store_type="chromadb",
-    storage_path="./data/chroma_db"
+    storage_path="./data/chroma_db",
+    llm_model_name="Qwen/Qwen2.5-0.5B-Instruct",
+    use_llm=True,
 )
 
-# Add a document
-result = rag.add_document("path/to/document.pdf", document_id="doc1")
-print(result)
-
-# Query documents
-result = rag.query("What is the main topic of this document?", top_k=5)
-print(result['context'])
+rag.add_document("docs/example.md", document_id="example")
+result = rag.query("What does the document say?", top_k=3)
+print(result["answer"])
+print(result["chunks"])
 ```
 
-## MCP Tools
+## Hardware Notes
 
-The MCP server exposes the following tools:
+- `all-MiniLM-L6-v2` embeddings are lightweight and CPU-friendly.
+- Qwen2.5 0.5B can run on CPU, but generation may still be slow.
+- Phi-3-mini and Mistral 7B are higher quality but much heavier.
+- CUDA GPUs can use optional 4-bit loading if `bitsandbytes` is installed.
+- On Apple Silicon, PyTorch may use MPS if your local install supports it.
 
-### `add_document`
-Add a PDF document to the knowledge base.
+## Known Limitations
 
-**Parameters:**
-- `pdf_path` (required): Path to the PDF file
-- `document_id` (optional): Identifier for the document
-
-### `query_documents`
-Query the document knowledge base to retrieve relevant context.
-
-**Parameters:**
-- `question` (required): The question or query text
-- `top_k` (optional): Number of chunks to retrieve (default: 5)
-
-### `delete_document`
-Delete a document from the knowledge base.
-
-**Parameters:**
-- `document_id` (required): Identifier of the document to delete
-
-## Running on Google Colab
-
-Since your laptop cannot run heavy software, you can use Google Colab Pro:
-
-### Quick Start
-
-1. **Open the Colab notebook**: `colab_example.ipynb`
-2. **Upload project files** to Colab (or clone from GitHub)
-3. **Run the setup cells** to install dependencies
-4. **Initialize RAG with LLM**:
-   ```python
-   from src.rag_engine import RAGEngine
-   
-   rag = RAGEngine(
-       embedding_model="all-MiniLM-L6-v2",
-       vector_store_type="chromadb",
-       storage_path="./data/chroma_db",
-       llm_model_name="mistralai/Mistral-7B-Instruct-v0.2",  # HuggingFace model
-       use_llm=True  # Enable answer generation
-   )
-   ```
-5. **Add documents and query**:
-   ```python
-   # Add PDF
-   rag.add_document("your_file.pdf")
-   
-   # Query with answer generation
-   result = rag.query("Your question?", generate_answer=True)
-   print(result['answer'])
-   ```
-
-### Recommended Models for Colab
-
-- **Colab Pro/A100**: `mistralai/Mistral-7B-Instruct-v0.2` (high quality, ~14GB)
-- **Colab Free**: Use retrieval-only mode (`use_llm=False`) or `distilgpt2` for testing
-
-See `EXPLANATION.md` for detailed information about models and architecture.
-
-## Project Structure
-
-```
-mcp_with_agentic_ai/
-├── src/
-│   ├── __init__.py
-│   ├── document_processor.py    # PDF processing and chunking
-│   ├── embedding_service.py     # Embedding generation
-│   ├── vector_store.py          # Vector database interface
-│   ├── rag_engine.py            # Main RAG orchestration
-│   └── mcp_server.py            # MCP server implementation
-├── data/                        # Data storage (created at runtime)
-│   ├── documents/               # PDF files storage
-│   └── chroma_db/               # Vector database
-├── client.py                    # Interactive client application
-├── requirements.txt             # Python dependencies
-├── .env.example                 # Environment configuration template
-├── .gitignore                   # Git ignore rules
-└── README.md                    # This file
-```
-
-## Technologies Used
-
-- **MCP (Model Context Protocol)**: For server interface
-- **Sentence Transformers**: For local embeddings
-- **ChromaDB/FAISS**: Vector databases
-- **PyPDF/pdfplumber**: PDF text extraction
-- **OpenAI API** (optional): For cloud-based embeddings
-
-## Portfolio Use Case
-
-This project demonstrates:
-
-- ✅ **Agentic AI Systems**: RAG pipeline with autonomous document processing
-- ✅ **MCP Integration**: Modern protocol-based AI agent interaction
-- ✅ **Vector Databases**: Efficient semantic search implementation
-- ✅ **End-to-End System**: Complete workflow from PDF ingestion to Q&A
-- ✅ **Production-Ready Code**: Well-structured, modular architecture
-
-Perfect for showcasing SLM-first agentic AI systems expertise!
-
-## Future Enhancements
-
-- [ ] LLM integration for answer generation (using retrieved context)
-- [ ] Support for more document formats (DOCX, TXT, etc.)
-- [ ] Web UI for document management and querying
-- [ ] Multi-modal support (images in PDFs)
-- [ ] Advanced chunking strategies (semantic chunking)
-- [ ] Query expansion and refinement
-- [ ] Document metadata filtering
-
-## License
-
-This project is part of a research portfolio focused on agentic AI systems.
-
-## Author
-
-Isaac Kobby - PhD Researcher in SLM-first Agentic AI Systems
-Portfolio: https://isaackobby.com
+- FAISS mode is in-memory and does not persist/reload indexes yet.
+- Document deletion is only implemented for ChromaDB.
+- PDF extraction quality depends on the PDF text layer.
+- There is no web UI yet; the current interfaces are CLI, Python API, and MCP.
+- This is a demo, not a production RAG service.

@@ -1,4 +1,4 @@
-"""Document processing module for PDF extraction and chunking"""
+"""Document processing module for text extraction and chunking"""
 
 import os
 from typing import List, Dict, Optional
@@ -8,7 +8,7 @@ import pdfplumber
 
 
 class DocumentProcessor:
-    """Processes PDF documents and splits them into chunks"""
+    """Processes supported documents and splits them into chunks"""
     
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
         """
@@ -27,12 +27,12 @@ class DocumentProcessor:
         
         Args:
             pdf_path: Path to the PDF file
-            
+
         Returns:
             Extracted text content
         """
         text = ""
-        
+
         # Try pdfplumber first (better for complex layouts)
         try:
             with pdfplumber.open(pdf_path) as pdf:
@@ -60,6 +60,13 @@ class DocumentProcessor:
                 raise ValueError(f"Failed to extract text from PDF: {e}")
         
         return text.strip()
+
+    def extract_text_from_text_file(self, file_path: str) -> str:
+        """Extract text from a plain text or Markdown file."""
+        try:
+            return Path(file_path).read_text(encoding="utf-8").strip()
+        except UnicodeDecodeError:
+            return Path(file_path).read_text(encoding="latin-1").strip()
     
     def chunk_text(self, text: str, metadata: Optional[Dict] = None) -> List[Dict]:
         """
@@ -87,7 +94,7 @@ class DocumentProcessor:
             # Try to break at sentence boundary
             if end < text_length:
                 # Look for sentence endings near the chunk boundary
-                for delimiter in ['. ', '.\n', '! ', '?\n', '?\n']:
+                for delimiter in ['. ', '.\n', '! ', '!\n', '? ', '?\n']:
                     last_delimiter = text.rfind(delimiter, start, end)
                     if last_delimiter != -1:
                         end = last_delimiter + len(delimiter)
@@ -112,25 +119,33 @@ class DocumentProcessor:
         
         return chunks
     
-    def process_pdf(self, pdf_path: str, document_id: Optional[str] = None) -> List[Dict]:
+    def process_document(self, document_path: str, document_id: Optional[str] = None) -> List[Dict]:
         """
-        Process a PDF file: extract text and chunk it.
+        Process a supported document: extract text and chunk it.
         
         Args:
-            pdf_path: Path to the PDF file
+            document_path: Path to the document
             document_id: Optional document identifier
             
         Returns:
             List of chunks with text and metadata
         """
-        if not os.path.exists(pdf_path):
-            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-        
-        document_id = document_id or Path(pdf_path).stem
-        
-        print(f"Extracting text from PDF: {Path(pdf_path).name}")
-        # Extract text
-        text = self.extract_text_from_pdf(pdf_path)
+        if not os.path.exists(document_path):
+            raise FileNotFoundError(f"Document file not found: {document_path}")
+
+        path = Path(document_path)
+        document_id = document_id or path.stem
+        suffix = path.suffix.lower()
+
+        print(f"Extracting text from document: {path.name}")
+        if suffix == ".pdf":
+            text = self.extract_text_from_pdf(document_path)
+        elif suffix in {".txt", ".md", ".markdown"}:
+            text = self.extract_text_from_text_file(document_path)
+        else:
+            raise ValueError(
+                f"Unsupported document type '{suffix}'. Supported types: .pdf, .txt, .md"
+            )
         
         print(f"Text extracted: {len(text)} characters")
         print(f"Chunking text...")
@@ -138,8 +153,9 @@ class DocumentProcessor:
         # Create metadata
         metadata = {
             'document_id': document_id,
-            'file_path': pdf_path,
-            'file_name': Path(pdf_path).name,
+            'file_path': document_path,
+            'file_name': path.name,
+            'file_type': suffix.lstrip("."),
             'total_chars': len(text)
         }
         
@@ -148,3 +164,7 @@ class DocumentProcessor:
         print(f"Created {len(chunks)} chunks")
         
         return chunks
+
+    def process_pdf(self, pdf_path: str, document_id: Optional[str] = None) -> List[Dict]:
+        """Backward-compatible wrapper for PDF-only callers."""
+        return self.process_document(pdf_path, document_id)

@@ -7,19 +7,20 @@ pypdf>=3.17.0
 pdfplumber>=0.10.0
 
 # Embeddings and vector store
-sentence-transformers>=2.2.0
+sentence-transformers>=2.2.0,<3.0.0
 chromadb>=0.4.0
 faiss-cpu>=1.7.4
 
 # AI/LLM integration
 openai>=1.0.0
-anthropic>=0.7.0
-transformers>=4.35.0
+transformers>=4.35.0,<5.0.0
 torch>=2.0.0
 accelerate>=0.24.0
-bitsandbytes>=0.41.0  # For 4-bit/8-bit quantization (saves memory)
+huggingface-hub>=0.20.0,<1.0.0
+# Optional on CUDA/Linux if you want 4-bit model loading:
+# bitsandbytes>=0.41.0
 
 # Utilities
-numpy>=1.24.0
+numpy>=1.24.0,<2.0.0
 pydantic>=2.0.0
 typing-extensions>=4.8.0

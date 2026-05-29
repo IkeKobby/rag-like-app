@@ -6,7 +6,11 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+    requirements = []
+    for line in fh:
+        requirement = line.split("#", 1)[0].strip()
+        if requirement:
+            requirements.append(requirement)
 
 setup(
     name="rag-mcp-server",
@@ -30,8 +34,8 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "rag-mcp-server=src.mcp_server:main",
-            "rag-client=client:interactive_client",
+            "rag-mcp-server=src.mcp_server:run",
+            "rag-client=client:main",
         ],
     },
 )

@@ -20,7 +20,11 @@ class RAGEngine:
         chunk_overlap: int = 200,
         llm_model_name: Optional[str] = None,
         use_llm: bool = False,
-        use_simple_llm: bool = False
+        use_simple_llm: bool = False,
+        llm_device: Optional[str] = None,
+        llm_max_new_tokens: int = 256,
+        llm_temperature: float = 0.0,
+        llm_top_p: float = 0.9
     ):
         """
         Initialize the RAG engine.
@@ -34,6 +38,10 @@ class RAGEngine:
             llm_model_name: HuggingFace model name for answer generation (optional)
             use_llm: Whether to use LLM for answer generation
             use_simple_llm: Use a smaller, faster LLM (for CPU/quick testing)
+            llm_device: Device for LLM inference ('cuda', 'mps', 'cpu', or None)
+            llm_max_new_tokens: Maximum tokens generated per answer
+            llm_temperature: Sampling temperature
+            llm_top_p: Nucleus sampling parameter
         """
         self.document_processor = DocumentProcessor(
             chunk_size=chunk_size,
@@ -54,6 +62,11 @@ class RAGEngine:
         # Initialize LLM service if requested
         self.llm_service = None
         self.use_llm = use_llm
+        self.llm_generation_kwargs = {
+            "max_new_tokens": llm_max_new_tokens,
+            "temperature": llm_temperature,
+            "top_p": llm_top_p,
+        }
         
         if use_llm and llm_model_name:
             try:
@@ -62,27 +75,26 @@ class RAGEngine:
                     self.llm_service = SimpleLLMService(model_name=llm_model_name)
                 else:
                     from .llm_service import LLMService
-                    self.llm_service = LLMService(model_name=llm_model_name)
+                    self.llm_service = LLMService(model_name=llm_model_name, device=llm_device)
                 print(f"✓ LLM service initialized: {llm_model_name}")
             except Exception as e:
                 print(f"Warning: Failed to load LLM service: {e}")
                 print("Continuing without LLM (retrieval-only mode)")
                 self.use_llm = False
     
-    def add_document(self, pdf_path: str, document_id: Optional[str] = None) -> Dict:
+    def add_document(self, document_path: str, document_id: Optional[str] = None) -> Dict:
         """
-        Add a PDF document to the knowledge base.
+        Add a supported document to the knowledge base.
         
         Args:
-            pdf_path: Path to the PDF file
+            document_path: Path to the document file
             document_id: Optional document identifier
             
         Returns:
             Dictionary with processing results
         """
         try:
-            # Process PDF
-            chunks = self.document_processor.process_pdf(pdf_path, document_id)
+            chunks = self.document_processor.process_document(document_path, document_id)
             
             if not chunks:
                 return {
@@ -176,7 +188,14 @@ class RAGEngine:
         
         if should_generate and self.llm_service:
             try:
-                answer = self.llm_service.generate_answer(question, context)
+                if not context:
+                    answer = "I could not find any relevant context in the ingested documents."
+                else:
+                    answer = self.llm_service.generate_answer(
+                        question,
+                        context,
+                        **self.llm_generation_kwargs
+                    )
                 result['answer'] = answer
             except Exception as e:
                 result['answer'] = f"Error generating answer: {str(e)}"

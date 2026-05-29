@@ -1,7 +1,7 @@
 """LLM Service for answer generation using HuggingFace models"""
 
 import os
-from typing import Optional, List
+from typing import Optional
 import torch
 from transformers import (
     AutoTokenizer,
@@ -16,9 +16,10 @@ class LLMService:
     
     def __init__(
         self,
-        model_name: str = "mistralai/Mistral-7B-Instruct-v0.2",
+        model_name: str = "Qwen/Qwen2.5-0.5B-Instruct",
         use_quantization: bool = True,
-        device: Optional[str] = None
+        device: Optional[str] = None,
+        hf_token: Optional[str] = None
     ):
         """
         Initialize the LLM service.
@@ -27,14 +28,24 @@ class LLMService:
             model_name: HuggingFace model name or path
             use_quantization: Use 4-bit quantization to save memory (recommended for Colab)
             device: Device to use ('cuda', 'cpu', or None for auto-detect)
+            hf_token: Optional Hugging Face token for gated/private models
         """
         self.model_name = model_name
         self.use_quantization = use_quantization
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or self._detect_device()
+        self.hf_token = hf_token or os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
         self.tokenizer = None
         self.model = None
         self.generator = None
         self._load_model()
+
+    def _detect_device(self) -> str:
+        """Choose the best locally available inference device."""
+        if torch.cuda.is_available():
+            return "cuda"
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
     
     def _load_model(self):
         """Load the LLM model and tokenizer"""
@@ -42,16 +53,16 @@ class LLMService:
         print(f"Device: {self.device}")
 
         try:
-            self._extracted_from__load_model_8()
+            self._load_tokenizer_and_model()
         except Exception as e:
             raise RuntimeError(f"Failed to load LLM model {self.model_name}: {e}") from e
 
-    # TODO Rename this here and in `_load_model`
-    def _extracted_from__load_model_8(self):
+    def _load_tokenizer_and_model(self):
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
-            trust_remote_code=True
+            trust_remote_code=True,
+            token=self.hf_token
         )
 
         # Set pad token if not present
@@ -79,6 +90,7 @@ class LLMService:
                 quantization_config=quantization_config,
                 device_map="auto",
                 trust_remote_code=True,
+                token=self.hf_token,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
             )
             uses_device_map = True
@@ -86,17 +98,24 @@ class LLMService:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
                 trust_remote_code=True,
+                token=self.hf_token,
                 torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
             )
-            if self.device == "cpu":
+            if self.device in {"cpu", "mps"}:
                 self.model = self.model.to(self.device)
             uses_device_map = False
 
         # Store flag for pipeline creation
         self.uses_device_map = uses_device_map
 
-            # Create pipeline for text generation
-            # When using device_map="auto", don't specify device in pipeline
+        # Create pipeline for text generation.
+        # When using device_map="auto", don't specify device in pipeline.
+        pipeline_device = -1
+        if self.device == "cuda":
+            pipeline_device = 0
+        elif self.device == "mps":
+            pipeline_device = torch.device("mps")
+
         self.generator = (
             pipeline("text-generation", model=self.model, tokenizer=self.tokenizer)
             if self.uses_device_map
@@ -104,7 +123,7 @@ class LLMService:
                 "text-generation",
                 model=self.model,
                 tokenizer=self.tokenizer,
-                device=0 if self.device == "cuda" else -1,
+                device=pipeline_device,
             )
         )
         print("LLM model loaded successfully")
@@ -113,8 +132,8 @@ class LLMService:
         self,
         question: str,
         context: str,
-        max_length: int = 512,
-        temperature: float = 0.7,
+        max_new_tokens: int = 256,
+        temperature: float = 0.0,
         top_p: float = 0.9
     ) -> str:
         """
@@ -123,7 +142,7 @@ class LLMService:
         Args:
             question: The user's question
             context: Retrieved context from documents
-            max_length: Maximum length of generated response
+            max_new_tokens: Maximum number of tokens to generate
             temperature: Sampling temperature (higher = more creative)
             top_p: Nucleus sampling parameter
             
@@ -140,24 +159,23 @@ class LLMService:
         
         try:
             # Generate response
-            outputs = self.generator(
-                prompt,
-                max_length=max_length,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=True,
-                num_return_sequences=1,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                truncation=True
-            )
+            do_sample = temperature > 0
+            generation_kwargs = {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "num_return_sequences": 1,
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "truncation": True,
+                "return_full_text": False,
+            }
+            if do_sample:
+                generation_kwargs["temperature"] = temperature
+                generation_kwargs["top_p"] = top_p
+
+            outputs = self.generator(prompt, **generation_kwargs)
             
-            generated_text = outputs[0]['generated_text']
-            
-            # Extract the answer (remove the prompt)
-            answer = generated_text[len(prompt):].strip()
-            
-            return answer
+            return outputs[0]['generated_text'].strip()
         
         except Exception as e:
             return f"Error generating answer: {str(e)}"
@@ -170,7 +188,9 @@ class LLMService:
                 messages = [
                     {
                         "role": "user",
-                        "content": f"""Use the following context to answer the question. If the context doesn't contain enough information, say so.
+                        "content": f"""You are a careful document question-answering assistant. Answer only from the context.
+If the context contains the answer, give the direct answer in one or two sentences.
+If the context does not contain the answer, say that the context does not provide enough information.
 
 Context:
 {context}
@@ -188,7 +208,9 @@ Question: {question}"""
                 pass  # Fall back to simple prompt
         
         # Simple prompt format (works for most instruction models)
-        prompt = f"""Use the following context to answer the question. If the context doesn't contain enough information, say so.
+        prompt = f"""You are a careful document question-answering assistant. Answer only from the context.
+If the context contains the answer, give the direct answer in one or two sentences.
+If the context does not contain the answer, say that the context does not provide enough information.
 
 Context:
 {context}
@@ -237,8 +259,25 @@ class SimpleLLMService:
         except Exception as e:
             raise RuntimeError(f"Failed to load model: {e}")
     
-    def generate_answer(self, question: str, context: str, max_length: int = 200) -> str:
+    def generate_answer(
+        self,
+        question: str,
+        context: str,
+        max_new_tokens: int = 160,
+        temperature: float = 0.0,
+        top_p: float = 0.9
+    ) -> str:
         """Generate a simple answer"""
         prompt = f"Question: {question}\nContext: {context}\nAnswer:"
-        outputs = self.generator(prompt, max_length=max_length, num_return_sequences=1)
-        return outputs[0]['generated_text'][len(prompt):].strip()
+        do_sample = temperature > 0
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": do_sample,
+            "num_return_sequences": 1,
+            "return_full_text": False,
+        }
+        if do_sample:
+            generation_kwargs["temperature"] = temperature
+            generation_kwargs["top_p"] = top_p
+        outputs = self.generator(prompt, **generation_kwargs)
+        return outputs[0]['generated_text'].strip()

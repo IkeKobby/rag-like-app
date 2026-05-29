@@ -1,9 +1,9 @@
 """Vector store for storing and retrieving document embeddings"""
 
-import os
 from typing import List, Dict, Optional, Tuple
 import numpy as np
 from pathlib import Path
+import hashlib
 
 
 class VectorStore:
@@ -69,8 +69,8 @@ class VectorStore:
             metadatas: List of metadata dictionaries
         """
         if self.store == "chromadb":
-            ids = [f"doc_{i}" for i in range(len(texts))]
-            self.collection.add(
+            ids = [self._make_document_id(text, metadata) for text, metadata in zip(texts, metadatas)]
+            self.collection.upsert(
                 embeddings=embeddings.tolist(),
                 documents=texts,
                 metadatas=metadatas,
@@ -113,8 +113,9 @@ class VectorStore:
             List of similar documents with scores
         """
         if self.store == "chromadb":
+            query_vector = np.asarray(query_embedding).reshape(-1).tolist()
             results = self.collection.query(
-                query_embeddings=[query_embedding.tolist()],
+                query_embeddings=[query_vector],
                 n_results=top_k
             )
             
@@ -127,7 +128,7 @@ class VectorStore:
                         'score': 1 - results['distances'][0][i] if 'distances' in results else 0.0
                     })
             return documents
-        
+
         elif self.store == "faiss":
             import faiss
             
@@ -153,6 +154,17 @@ class VectorStore:
                         'score': max(0.0, score)
                     })
             return documents
+
+    def _make_document_id(self, text: str, metadata: Dict) -> str:
+        """Create a stable unique chunk ID for vector stores that require IDs."""
+        key_parts = [
+            str(metadata.get("document_id", "")),
+            str(metadata.get("chunk_index", "")),
+            str(metadata.get("start_char", "")),
+            text[:128],
+        ]
+        digest = hashlib.sha1("::".join(key_parts).encode("utf-8")).hexdigest()
+        return f"chunk_{digest}"
     
     def delete_document(self, document_id: str):
         """Delete all chunks from a document"""

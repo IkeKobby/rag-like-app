@@ -19,14 +19,14 @@
 
 ### The RAG Pipeline
 ```
-PDF Document → Chunks → Embeddings (Embedding Model) → Vector Database
+Document → Chunks → Embeddings (Embedding Model) → Vector Database
                                                               ↓
 User Question → Embedding (Embedding Model) → Search Vector DB → Retrieve Relevant Chunks
                                                                       ↓
                                                           Context + Question → LLM → Answer
 ```
 
-**Current Status**: Our system does steps 1-6 (retrieval) but NOT step 7 (LLM answer generation). It returns the retrieved context, but doesn't generate a final answer yet.
+**Current Status**: The system now supports the full demo flow: document ingestion, chunking, embeddings, vector retrieval, prompt construction, and optional Hugging Face answer generation.
 
 ---
 
@@ -50,7 +50,7 @@ User Question → Embedding (Embedding Model) → Search Vector DB → Retrieve 
    - Original text (usually stored alongside)
 
 3. **NOT stored**:
-   - The original PDF files (those stay on disk)
+   - The original document files (those stay on disk)
    - Images or other binary content
 
 ### FAISS vs ChromaDB
@@ -71,7 +71,7 @@ User Question → Embedding (Embedding Model) → Search Vector DB → Retrieve 
 
 ### The Storage Flow
 ```
-PDF File (on disk)
+Document File (on disk)
     ↓
 Text Extraction → "This is a sentence about AI..."
     ↓
@@ -89,19 +89,19 @@ Question → Embedding → Search Vector DB → Returns: matching chunks with sc
 
 ---
 
-## 3. Current System vs. Full RAG System
+## 3. Retrieval vs. Full RAG Mode
 
-### What We Have Now (Retrieval Only)
+### Retrieval Only
 ```
 User Question → Embedding → Vector Search → Retrieved Context
 ```
-Returns the relevant document chunks but doesn't generate an answer.
+Returns the relevant document chunks but doesn't generate an answer. Use this when local memory is limited or you want a fast smoke test.
 
-### What We Need (Full RAG)
+### Full RAG
 ```
 User Question → Embedding → Vector Search → Retrieved Context → LLM → Generated Answer
 ```
-Takes the context and generates a coherent answer using an LLM.
+Takes the context and generates a coherent answer using the configured Hugging Face model.
 
 ---
 
@@ -113,13 +113,8 @@ Takes the context and generates a coherent answer using an LLM.
 - Integrate LLM for answer generation
 - Make it easy to run in Colab notebooks
 
-### Recommended HuggingFace Models for Colab:
-- **Small & Fast**: `microsoft/DialoGPT-medium`, `distilgpt2`
-- **Quality & Balanced**: `mistralai/Mistral-7B-Instruct-v0.2`, `meta-llama/Llama-2-7b-chat-hf`
-- **Very Quality**: `mistralai/Mixtral-8x7B-Instruct-v0.1` (larger, needs more RAM)
-
-### What We'll Add:
-1. LLM integration using HuggingFace Transformers
-2. Answer generation from retrieved context
-3. Colab-friendly setup (with GPU support)
-4. Updated RAG engine that includes the full pipeline
+### Recommended HuggingFace Models:
+- **Default local demo**: `Qwen/Qwen2.5-0.5B-Instruct`
+- **Better quality, heavier**: `microsoft/Phi-3-mini-4k-instruct`
+- **GPU/Colab quality model**: `mistralai/Mistral-7B-Instruct-v0.2`
+- **Tiny fallback, poor answer quality**: `distilgpt2`
